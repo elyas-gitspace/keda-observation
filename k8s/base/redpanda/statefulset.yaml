@@ -1,0 +1,63 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redpanda
+  namespace: keda-observation
+spec:
+  serviceName: redpanda
+  replicas: 1 # un seul broker : largement suffisant pour ce projet, pas besoin d'un vrai cluster HA
+  selector:
+    matchLabels:
+      app: redpanda
+  template:
+    metadata:
+      labels:
+        app: redpanda
+    spec:
+      nodeSelector:
+        workload: data-plane
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:v24.1.9
+          command:
+            - /bin/bash
+            - -c
+            - |
+              rpk redpanda start \
+                --mode dev-container \
+                --smp 1 \
+                --memory 1G \
+                --overprovisioned \
+                --node-id 0 \
+                --check=false \
+                --kafka-addr PLAINTEXT://0.0.0.0:9092 \
+                --advertise-kafka-addr PLAINTEXT://redpanda:9092
+          ports:
+            - containerPort: 9092
+              name: kafka
+            - containerPort: 9644
+              name: admin
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/redpanda/data
+          readinessProbe:
+            tcpSocket:
+              port: 9092
+            initialDelaySeconds: 10
+            periodSeconds: 5
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        storageClassName: local-path
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi

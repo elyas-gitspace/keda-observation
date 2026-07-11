@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: producer-config
+  namespace: keda-observation
+data:
+  KAFKA_BROKERS: "redpanda:9092"
+  KAFKA_TOPIC: "wikipedia-events"
+  WIKI_STREAM_URL: "https://stream.wikimedia.org/v2/stream/recentchange"
+  WIKI_FILTER: "frwiki"
+  SAMPLE_RATE: "10"

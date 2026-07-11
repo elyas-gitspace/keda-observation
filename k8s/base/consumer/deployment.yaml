@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+  namespace: keda-observation
+  labels:
+    app: consumer
+spec:
+  # Valeur de base, sera pilotée dynamiquement par KEDA une fois le
+  # ScaledObject en place (étape suivante). 1 = suffisant au repos.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consumer
+  template:
+    metadata:
+      labels:
+        app: consumer
+    spec:
+      nodeSelector:
+        workload: app-plane
+      containers:
+        - name: consumer
+          image: ghcr.io/monorg/consumer:latest # remplacé automatiquement par la CI au moment du déploiement
+          envFrom:
+            - configMapRef:
+                name: consumer-config
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: DATABASE_URL
+          ports:
+            - containerPort: 9090
+              name: metrics
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 9090
+            initialDelaySeconds: 10
+            periodSeconds: 15

@@ -1,0 +1,23 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: consumer-scaler
+  namespace: keda-observation
+spec:
+  scaleTargetRef:
+    name: consumer
+
+  minReplicaCount: 1
+  maxReplicaCount: 8
+
+  pollingInterval: 15
+  cooldownPeriod: 60
+
+  triggers:
+    - type: kafka
+      metadata:
+        bootstrapServers: redpanda.keda-observation.svc.cluster.local:9092
+        consumerGroup: wikipedia-consumer-group
+        topic: wikipedia-events
+        lagThreshold: "20"
+        offsetResetPolicy: latest

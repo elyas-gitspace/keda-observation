@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: producer
+  namespace: keda-observation
+  labels:
+    app: producer
+spec:
+  # Toujours 1 seule réplique, jamais plus : sinon plusieurs instances
+  # liraient le même flux Wikipedia et publieraient des doublons dans Kafka.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: producer
+  template:
+    metadata:
+      labels:
+        app: producer
+    spec:
+      nodeSelector:
+        workload: app-plane
+      containers:
+        - name: producer
+          image: ghcr.io/monorg/producer:latest # remplacé automatiquement par la CI au moment du déploiement
+          envFrom:
+            - configMapRef:
+                name: producer-config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
