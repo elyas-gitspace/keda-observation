@@ -21,7 +21,7 @@ spec:
         workload: app-plane
       containers:
         - name: consumer
-          image: ghcr.io/monorg/consumer:latest # remplacé automatiquement par la CI au moment du déploiement
+          image: ghcr.io/elyas-gitspace/consumer:latest # remplacé automatiquement par la CI au moment du déploiement
           envFrom:
             - configMapRef:
                 name: consumer-config

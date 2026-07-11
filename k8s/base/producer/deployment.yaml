@@ -21,7 +21,7 @@ spec:
         workload: app-plane
       containers:
         - name: producer
-          image: ghcr.io/monorg/producer:latest # remplacé automatiquement par la CI au moment du déploiement
+          image: ghcr.io/elyas-gitspace/producer:latest # remplacé automatiquement par la CI au moment du déploiement
           envFrom:
             - configMapRef:
                 name: producer-config
