@@ -27,7 +27,7 @@ func main() {
 	brokers := getEnv("KAFKA_BROKERS", "redpanda:9092")
 	topic := getEnv("KAFKA_TOPIC", "wikipedia-events")
 	streamURL := getEnv("WIKI_STREAM_URL", "https://stream.wikimedia.org/v2/stream/recentchange")
-	wikiFilter := getEnv("WIKI_FILTER", "frwiki") // vide = pas de filtre
+	wikiFilter := getEnvAllowEmpty("WIKI_FILTER", "frwiki")
 	sampleRate := getEnvInt("SAMPLE_RATE", 10)    // on garde 1 event sur N
 
 	writer := &kafka.Writer{
@@ -110,6 +110,16 @@ func publish(writer *kafka.Writer, payload string) error {
 
 func getEnv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+// getEnvAllowEmpty comme getEnv, mais si la variable est explicitement
+// définie (même vide), on la garde telle quelle plutôt que d'utiliser
+// le fallback. Sert pour WIKI_FILTER: "" (= pas de filtre du tout).
+func getEnvAllowEmpty(key, fallback string) string {
+	if v, ok := os.LookupEnv(key); ok {
 		return v
 	}
 	return fallback
