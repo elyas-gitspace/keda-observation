@@ -8,4 +8,4 @@ data:
   KAFKA_TOPIC: "wikipedia-events"
   WIKI_STREAM_URL: "https://stream.wikimedia.org/v2/stream/recentchange"
   WIKI_FILTER: "frwiki"
-  SAMPLE_RATE: "10"
+  SAMPLE_RATE: "1"
