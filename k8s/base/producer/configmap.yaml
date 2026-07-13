@@ -7,5 +7,5 @@ data:
   KAFKA_BROKERS: "redpanda:9092"
   KAFKA_TOPIC: "wikipedia-events"
   WIKI_STREAM_URL: "https://stream.wikimedia.org/v2/stream/recentchange"
-  WIKI_FILTER: "frwiki"
+  WIKI_FILTER: ""
   SAMPLE_RATE: "1"
