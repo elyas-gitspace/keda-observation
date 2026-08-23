@@ -1,8 +1,6 @@
 # keda-observation
 
-Pipeline de streaming événementiel (Wikipedia → Kafka → PostgreSQL) avec autoscaling piloté par la charge réelle (KEDA), déploiement continu en GitOps (ArgoCD), et observabilité (Prometheus/Grafana).
-
-Ce document explique **quoi existe, où, et pourquoi**, avec le niveau de détail nécessaire pour reprendre le projet après une longue pause.
+Pipeline de streaming événementiel (Wikipedia → Kafka → PostgreSQL) avec autoscaling piloté par la charge réelle (KEDA), déploiement continu en GitOps (ArgoCD), et observabilité (Prometheus/Grafana)  
 
 ---
 
@@ -260,26 +258,3 @@ Grafana interroge Prometheus pour construire les graphiques : débit
 d'événements, latence d'insertion, et nombre de pods consumer dans
 le temps, corrélé au lag Kafka
 ```
-
----
-
-## Résolution des noms internes utilisés dans le projet
-
-| Appelant | Cible | Port | Remarque |
-|---|---|---|---|
-| producer | redpanda | 9092 | même namespace, nom court suffisant |
-| consumer | redpanda | 9092 | idem |
-| consumer | postgres.keda-observation.svc.cluster.local | 5432 | FQDN, fourni via Secret |
-| keda-operator | redpanda.keda-observation.svc.cluster.local | 9092 | FQDN obligatoire, namespace différent (keda) |
-| Prometheus | consumer.keda-observation.svc.cluster.local | 9090 | via le ServiceMonitor |
-| Grafana | prometheus | — | même namespace (monitoring) |
-| ArgoCD | github.com/&lt;user&gt;/keda-observation | 443 | HTTPS, externe au cluster |
-
----
-
-## Points d'attention pour une reprise future
-
-- Les images Docker doivent être construites avec `--platform linux/amd64` : les VM Hetzner sont en x86_64, un build fait depuis un Mac Apple Silicon produit par défaut une image `arm64` incompatible.
-- Un changement dans la commande de démarrage d'un `StatefulSet` (Redpanda, Postgres) n'entraîne pas de redémarrage automatique du pod existant, contrairement à un `Deployment`. Il faut supprimer le pod manuellement (`kubectl delete pod ...`) pour qu'il reparte avec la nouvelle définition.
-- Le secret `postgres-credentials` est stocké en clair dans le repo, à des fins de démonstration uniquement. Une vraie mise en production demanderait un mécanisme dédié (sealed-secrets ou external-secrets).
-- `SAMPLE_RATE` (dans `k8s/base/producer/configmap.yaml`) contrôle le volume d'événements réellement publiés. Le réduire ou le supprimer temporairement permet de générer plus de charge pour observer le scaling KEDA en action.
