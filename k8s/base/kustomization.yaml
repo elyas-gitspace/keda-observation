@@ -15,3 +15,4 @@ resources:
   - consumer/service.yaml
   - keda/scaledobject.yaml
   - monitoring/consumer-servicemonitor.yaml
+  - monitoring/grafana-ingress.yaml
