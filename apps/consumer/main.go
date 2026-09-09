@@ -16,7 +16,7 @@ import (
 	kafka "github.com/segmentio/kafka-go"
 )
 
-// WikiEvent représente un event du flux Wikipedia (même format que côté producer).
+// WikiEvent représente un event du flux Wikipedia (même format que côté producer)
 type WikiEvent struct {
 	Wiki      string `json:"wiki"`
 	Type      string `json:"type"`
