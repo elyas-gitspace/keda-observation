@@ -19,5 +19,5 @@ spec:
         bootstrapServers: redpanda.keda-observation.svc.cluster.local:9092
         consumerGroup: wikipedia-consumer-group
         topic: wikipedia-events
-        lagThreshold: "20"
+        lagThreshold: "5"
         offsetResetPolicy: latest
