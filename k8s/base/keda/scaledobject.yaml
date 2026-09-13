@@ -7,7 +7,7 @@ spec:
   scaleTargetRef:
     name: consumer
 
-  minReplicaCount: 0
+  minReplicaCount: 1
   maxReplicaCount: 8
 
   pollingInterval: 15
@@ -19,5 +19,5 @@ spec:
         bootstrapServers: redpanda.keda-observation.svc.cluster.local:9092
         consumerGroup: wikipedia-consumer-group
         topic: wikipedia-events
-        lagThreshold: "5"
+        lagThreshold: "1"
         offsetResetPolicy: latest
