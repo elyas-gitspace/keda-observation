@@ -7,7 +7,7 @@ spec:
   scaleTargetRef:
     name: consumer
 
-  minReplicaCount: 1
+  minReplicaCount: 0
   maxReplicaCount: 8
 
   pollingInterval: 15
