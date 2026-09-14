@@ -21,3 +21,11 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      name: consumer
+      namespace: keda-observation
+      jsonPointers:
+        - /spec/replicas
