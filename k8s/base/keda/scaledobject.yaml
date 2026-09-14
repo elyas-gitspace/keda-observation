@@ -19,7 +19,7 @@ spec:
         bootstrapServers: redpanda.keda-observation.svc.cluster.local:9092
         consumerGroup: wikipedia-consumer-group
         topic: wikipedia-events
-        lagThreshold: "1"
+        lagThreshold: "20"
         offsetResetPolicy: latest
 
   advanced:
@@ -28,4 +28,4 @@ spec:
         scaleDown:
           stabilizationWindowSeconds: 120   # wait 120s before scaling down to avoid flapping
         scaleUp:
-          stabilizationWindowSeconds: 0     # scale up immediately when needed (no delay)
+          stabilizationWindowSeconds: 0      # scale up immediately when needed 
