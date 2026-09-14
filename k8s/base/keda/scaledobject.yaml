@@ -21,3 +21,11 @@ spec:
         topic: wikipedia-events
         lagThreshold: "1"
         offsetResetPolicy: latest
+
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 120   # wait 120s before scaling down to avoid flapping
+        scaleUp:
+          stabilizationWindowSeconds: 0     # scale up immediately when needed (no delay)
