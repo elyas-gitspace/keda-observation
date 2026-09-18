@@ -1,45 +1,41 @@
-# keda-observation
+```
+ _  __   _____   ____    _
+| |/ /  | ____| |  _ \  / \
+| ' /   |  _|   | | | |/ _ \
+| . \   | |___  | |_| / ___ \
+|_|\_\  |_____| |____/_/   \_\
 
-Pipeline de streaming événementiel (Wikipedia → Kafka → PostgreSQL) avec autoscaling piloté par la charge réelle (KEDA), déploiement continu en GitOps (ArgoCD), et observabilité (Prometheus/Grafana)  
+              O B S E R V A T I O N
+```
+
+Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscaling driven by real load (KEDA), continuous deployment with GitOps (ArgoCD), and observability (Prometheus/Grafana).
 
 ---
 
-## Vue d'ensemble
+## Overview
 
-```
-Wikipedia (flux public temps réel)
-        │
-        ▼
-   producer (Go)  ──publie──▶  Redpanda (Kafka)  ──lu par──▶  consumer (Go)  ──insère──▶  PostgreSQL
-                                      │                              │
-                                      │ (lag surveillé)              │ (métriques exposées)
-                                      ▼                              ▼
-                                    KEDA  ──scale──▶  Deployment consumer
-                                                              │
-                                                              ▼
-                                                        Prometheus / Grafana
-```
+![Architecture diagram](docs/architecture_keda.png)
 
-Tout est déployé sur un cluster kubeadm (3 VM Hetzner), géré en GitOps via ArgoCD : le contenu de ce repo est la seule source de vérité, rien ne se modifie à la main dans le cluster.
+Everything runs on a kubeadm cluster (3 Hetzner VMs), managed with GitOps through ArgoCD: this repo is the single source of truth, nothing is changed by hand in the cluster.
 
 ---
 
-## Arborescence du repo
+## Repo structure
 
 ```
 apps/
-├── producer/           code Go : lit Wikipedia, publie dans Kafka
+├── producer/           Go code: reads Wikipedia, publishes to Kafka
 │   ├── main.go
 │   ├── go.mod
 │   └── Dockerfile
-└── consumer/            code Go : lit Kafka, écrit dans Postgres, expose /metrics
+└── consumer/            Go code: reads Kafka, writes to Postgres, exposes /metrics
     ├── main.go
     ├── go.mod
     └── Dockerfile
 
 k8s/
-├── base/                 la définition complète du projet (tout, sans exception)
-│   ├── kustomization.yaml    liste les 13 fichiers ci-dessous
+├── base/                 the full definition of the project (everything, no exceptions)
+│   ├── kustomization.yaml    lists the 13 files below
 │   ├── namespace.yaml
 │   ├── redpanda/service.yaml
 │   ├── redpanda/statefulset.yaml
@@ -55,206 +51,212 @@ k8s/
 │   └── monitoring/consumer-servicemonitor.yaml
 │
 └── overlays/prod/
-    └── kustomization.yaml    référence base/, patch le tag des images
+    └── kustomization.yaml    references base/, patches the image tags
 
 argocd/
-└── application.yaml      objet Application ArgoCD, pointe vers k8s/overlays/prod
+└── application.yaml      ArgoCD Application object, points to k8s/overlays/prod
 ```
 
 ---
 
-## Ce qui est installé sur le cluster, mais qui n'appartient pas à ce repo
+## Phase 1: GitOps bootstrap (done once)
 
-Ces briques sont des infrastructures partagées du cluster, installées une fois manuellement, indépendantes de ce projet précis :
-
-- **local-path-provisioner** : fournit la StorageClass `local-path`, utilisée par Postgres et Redpanda pour obtenir un vrai disque sur le node.
-- **KEDA** (namespace `keda`) : installé via le manifest officiel `keda-2.15.1.yaml` (téléchargé depuis le repo GitHub officiel de KEDA, pas écrit par nous). Ajoute au cluster les types `ScaledObject`, `ScaledJob`, `TriggerAuthentication`, et le pod `keda-operator` qui les surveille en permanence.
-- **kube-prometheus-stack** (namespace `monitoring`) : déjà présent sur ce cluster avant ce projet, installé via Helm (release `prometheus`). Fournit Prometheus, Grafana, kube-state-metrics, node-exporter, et le type `ServiceMonitor`.
-- **ArgoCD** (namespace `argocd`) : déjà présent sur ce cluster avant ce projet.
-
-Nodes labellisés manuellement (une fois, en CLI, jamais versionné) :
-```
-kubectl label node k8s-worker-1 workload=data-plane   (Redpanda, Prometheus, Grafana)
-kubectl label node k8s-worker-2 workload=app-plane    (Postgres, producer, consumer)
-```
-
----
-
-## Phase 1 : bootstrap GitOps (fait une seule fois)
-
-C'est la seule action manuelle de tout le projet. Après ça, plus rien ne se fait à la main.
+This is the only manual action in the whole project. After this, nothing is ever done by hand again.
 
 ```
 kubectl apply -f https://raw.githubusercontent.com/<user>/keda-observation/main/argocd/application.yaml
 ```
 
-Déroulé :
+What happens:
 
 ```
-Kubernetes crée l'objet Application "keda-observation" dans le namespace argocd
+Kubernetes creates the "keda-observation" Application object in the argocd namespace
         │
         ▼
-argocd-application-controller voit ce nouvel objet
+argocd-application-controller sees this new object
         │
-        │ lit spec.source.repoURL et spec.source.path (k8s/overlays/prod)
+        │ reads spec.source.repoURL and spec.source.path (k8s/overlays/prod)
         ▼
-argocd-repo-server clone le repo, se place dans k8s/overlays/prod
+argocd-repo-server clones the repo, moves into k8s/overlays/prod
         │
-        │ détecte un kustomization.yaml, invoque Kustomize (intégré à ArgoCD)
+        │ finds a kustomization.yaml, runs Kustomize (built into ArgoCD)
         ▼
-Kustomize lit k8s/overlays/prod/kustomization.yaml
+Kustomize reads k8s/overlays/prod/kustomization.yaml
         │
-        ├── resources: ../../base
-        │       → va lire k8s/base/kustomization.yaml
-        │       → assemble les 13 fichiers listés dedans
+        ├── sees "resources: ../../base"
+        │       → reads k8s/base/kustomization.yaml
+        │       → assembles the 13 files listed there
         │
-        └── images: [...]
-                → scanne les objets assemblés
-                → trouve les containers dont l'image correspond
-                  à ghcr.io/<user>/producer et .../consumer
-                → remplace leur tag par newTag (patché par la CI plus tard)
-        │
-        ▼
-Résultat : un flux YAML final, 13 objets, images à jour
+        └── sees "images: [...]"
+                → scans the assembled objects
+                → finds the containers whose image matches
+                  ghcr.io/<user>/producer and .../consumer
+                → replaces their tag with newTag (patched by the CI later)
         │
         ▼
-argocd-application-controller applique ce résultat sur l'API Kubernetes
+Result: one final YAML stream, 13 objects, up-to-date images
         │
         ▼
-Les contrôleurs natifs (Deployment, StatefulSet) créent les pods réels
-sur les nodes, selon les nodeSelector définis dans chaque manifest
+argocd-application-controller applies this result to the Kubernetes API
+        │
+        ▼
+The native controllers (Deployment, StatefulSet) create the real pods
+on the nodes, following the nodeSelector set in each manifest
 ```
 
-Ensuite, en continu : ArgoCD compare l'état du repo à l'état réel du cluster toutes les quelques minutes, et corrige automatiquement toute différence (`selfHeal: true`), y compris si quelqu'un modifie un objet à la main avec `kubectl edit`.
+After that, continuously: ArgoCD compares the repo state to the real cluster state every few minutes, and automatically fixes any difference (`selfHeal: true`), including if someone edits an object by hand with `kubectl edit`.
 
 ---
 
-## Phase 2 : pourquoi base/ et overlays/prod/ sont séparés
+## Phase 2: why base/ and overlays/prod/ are separated
 
-`base/kustomization.yaml` liste la totalité des objets du projet, sans exception, même ceux qui ne contiennent aucune image (namespace, secret, ScaledObject, ServiceMonitor). Son seul rôle est de garantir que **tout** existe dans le cluster.
+`base/kustomization.yaml` lists every single object of the project, even the ones with no image at all (namespace, secret, ScaledObject, ServiceMonitor). Its only job is to make sure **everything** exists in the cluster.
 
-`overlays/prod/kustomization.yaml` référence `base/` en entier, puis applique un patch supplémentaire, limité au tag des deux images. C'est le seul fichier que la CI modifiera automatiquement au moment d'un déploiement (`kustomize edit set image ...`), pour ne jamais toucher au reste du projet.
+`overlays/prod/kustomization.yaml` references all of `base/`, then applies one extra patch, limited to the two image tags. This is the only file the CI will ever touch automatically on deploy (`kustomize edit set image ...`), so the rest of the project is never touched.
 
-ArgoCD pointe précisément sur `k8s/overlays/prod`, jamais sur `k8s/` en général : les deux dossiers contiennent chacun un `kustomization.yaml`, et sans préciser lequel est le point d'entrée, ArgoCD tenterait de traiter les deux comme des sources indépendantes, ce qui produirait deux définitions concurrentes des mêmes objets.
-
----
-
-## Phase 3 : flux de données en continu
-
-```
-stream.wikimedia.org/v2/stream/recentchange  (flux public externe)
-        │
-        │ requête HTTP GET, header Accept: text/event-stream
-        │ (fonction consumeStream, apps/producer/main.go)
-        ▼
-pod producer (1 réplique fixe, jamais scalé — plusieurs instances
-dupliqueraient les mêmes événements dans Kafka)
-        │
-        │ parse chaque ligne JSON en struct WikiEvent
-        │ filtre : event.Wiki == WIKI_FILTER ("frwiki")
-        │ throttle : garde 1 événement sur SAMPLE_RATE (10)
-        │ publie via kafka-go, cible KAFKA_BROKERS ("redpanda:9092")
-        ▼
-Service redpanda (headless, port 9092) → pod redpanda-0
-        │
-        │ stocke le message dans le topic KAFKA_TOPIC ("wikipedia-events")
-        ▼
-pod consumer (1 à N répliques, pilotées par KEDA)
-        │
-        │ lit via kafka-go, GroupID = KAFKA_GROUP_ID
-        │ ("wikipedia-consumer-group" — si plusieurs pods consumer
-        │ partagent ce même GroupID, Kafka répartit automatiquement
-        │ les messages entre eux)
-        │
-        │ parse le JSON, insère dans Postgres via pool.Exec(...)
-        │ connexion : DATABASE_URL (Secret postgres-credentials,
-        │ injecté par env.valueFrom.secretKeyRef)
-        ▼
-Service postgres (headless, port 5432) → pod postgres-0
-        │
-        │ la table wiki_events est créée au premier démarrage du
-        │ consumer (fonction ensureSchema, CREATE TABLE IF NOT EXISTS)
-        ▼
-Disque persistant (storageClassName local-path), monté sur
-/var/lib/postgresql/data — survit aux redémarrages du pod
-```
+ArgoCD points exactly at `k8s/overlays/prod`, never at `k8s/` as a whole: both folders contain their own `kustomization.yaml`, and without a precise entry point ArgoCD would try to treat both as separate sources, producing two competing definitions of the same objects.
 
 ---
 
-## Phase 4 : boucle de scaling KEDA
-
-L'objet `ScaledObject` (`k8s/base/keda/scaledobject.yaml`) définit :
-- `scaleTargetRef.name: consumer` — quel Deployment scaler
-- `minReplicaCount: 1`, `maxReplicaCount: 8` — les bornes
-- `triggers[0].metadata.bootstrapServers` — adresse complète (FQDN) de Redpanda, `redpanda.keda-observation.svc.cluster.local:9092`, nécessaire car `keda-operator` tourne dans le namespace `keda`, différent de `keda-observation`
-- `lagThreshold: "20"` — la cible visée par message en attente
+## Phase 3: data flow
 
 ```
-keda-operator a détecté cet objet dès sa création, et créé
-automatiquement un HorizontalPodAutoscaler nommé keda-hpa-consumer-scaler
+stream.wikimedia.org/v2/stream/recentchange  (public external stream)
         │
+        │ HTTP GET request, header Accept: text/event-stream
+        │ (consumeStream function, apps/producer/main.go)
         ▼
-Toutes les 15 secondes (pollingInterval) :
+producer pod (fixed at 1 replica, never scaled — more than one
+instance would duplicate the same events into Kafka)
         │
-        │ keda-operator interroge Redpanda : quel est le lag actuel
-        │ du groupe wikipedia-consumer-group ?
-        │
-        │ Redpanda répond un nombre, par exemple 85
+        │ parses each JSON line into a WikiEvent struct
+        │ filter: event.Wiki == WIKI_FILTER ("frwiki")
+        │ throttle: keeps 1 event out of SAMPLE_RATE (10)
+        │ publishes with kafka-go, target KAFKA_BROKERS ("redpanda:9092")
         ▼
-keda-operator expose ce nombre via une API de métriques externes
+redpanda Service (headless, port 9092) → redpanda-0 pod
         │
+        │ stores the message in the KAFKA_TOPIC topic ("wikipedia-events")
         ▼
-Le HPA (composant standard de Kubernetes, pas créé par nous) lit ce
-nombre et calcule :
-        replicas = lag_actuel / lagThreshold = 85 / 20 ≈ 5
-        (borné entre minReplicaCount et maxReplicaCount)
+consumer pod (1 to N replicas, driven by KEDA)
         │
-        ▼
-Le HPA modifie spec.replicas du Deployment consumer
+        │ reads with kafka-go, GroupID = KAFKA_GROUP_ID
+        │ ("wikipedia-consumer-group" — if several consumer pods
+        │ share this same GroupID, Kafka automatically splits
+        │ the messages between them)
         │
+        │ parses the JSON, inserts into Postgres via pool.Exec(...)
+        │ connection: DATABASE_URL (postgres-credentials Secret,
+        │ injected through env.valueFrom.secretKeyRef)
         ▼
-Le contrôleur Deployment (natif Kubernetes) crée ou supprime des pods
-consumer pour atteindre ce nombre. Chaque nouveau pod rejoint
-automatiquement le même GroupID Kafka, qui répartit alors la charge
-entre tous les pods actifs.
+postgres Service (headless, port 5432) → postgres-0 pod
+        │
+        │ the wiki_events table is created the first time the
+        │ consumer starts (ensureSchema function, CREATE TABLE IF NOT EXISTS)
+        ▼
+Persistent disk (storageClassName local-path), mounted on
+/var/lib/postgresql/data — survives pod restarts
 ```
 
-Vérification manuelle du lag réel :
+---
+
+## Phase 4: how KEDA works here
+
+### The problem KEDA solves
+
+The standard Kubernetes HorizontalPodAutoscaler (HPA) only scales on CPU or memory. That's fine for a web API, but it's a bad fit for a worker reading a queue: a pod can sit at 5% CPU while thousands of messages pile up behind it, and the HPA will never react.
+
+KEDA fixes this by letting the HPA scale on **any external metric** instead — in this project, the Kafka consumer group lag.
+
+### What installing KEDA adds to the cluster
+
+KEDA is installed once, cluster-wide, from its official manifest (not written by this repo). It adds:
+
+- New CRDs (Custom Resource Definitions): `ScaledObject`, `ScaledJob`, `TriggerAuthentication`, `ClusterTriggerAuthentication` — new object types Kubernetes did not know before.
+- Three pods: `keda-operator` (watches `ScaledObject` objects and reacts to them), `keda-metrics-apiserver` (exposes the collected metric through a standard Kubernetes API), `keda-admission` (validates new objects).
+
+### Our ScaledObject
+
+`k8s/base/keda/scaledobject.yaml` is the only KEDA-related file that belongs to this repo. It sets:
+
+- `scaleTargetRef.name: consumer` — which Deployment to scale
+- `minReplicaCount: 1`, `maxReplicaCount: 8` — the bounds
+- `triggers[0].metadata.bootstrapServers` — the full address (FQDN) of Redpanda, `redpanda.keda-observation.svc.cluster.local:9092`, needed because `keda-operator` runs in the `keda` namespace, not `keda-observation`
+- `lagThreshold: "20"` — the target lag per partition
+
+### What happens once this object exists
+
+```
+keda-operator sees this new ScaledObject as soon as it's created,
+and automatically creates a standard Kubernetes HorizontalPodAutoscaler
+named keda-hpa-consumer-scaler
+        │
+        ▼
+Every 15 seconds (pollingInterval):
+        │
+        │ keda-operator asks Redpanda: what is the current lag
+        │ of the wikipedia-consumer-group group?
+        │
+        │ Redpanda answers a number, say 85
+        ▼
+keda-operator exposes this number through an external metrics API
+        │
+        ▼
+The HPA (a standard Kubernetes component, not created by this repo)
+reads this number and computes:
+        replicas = current_lag / lagThreshold = 85 / 20 ≈ 5
+        (capped between minReplicaCount and maxReplicaCount)
+        │
+        ▼
+The HPA updates spec.replicas on the consumer Deployment
+        │
+        ▼
+The native Deployment controller creates or removes consumer pods
+to reach that number. Each new pod automatically joins the same
+Kafka GroupID, which then splits the load across all active pods.
+```
+
+Checking the real lag by hand:
 ```
 kubectl exec -it redpanda-0 -n keda-observation -- rpk group describe wikipedia-consumer-group
 ```
 
+### Seeing it in action
+
+![KEDA scaling the consumer pods](docs/keda-scaling.png)
+
 ---
 
-## Phase 5 : observabilité
+## Phase 5: observability
 
-Le container consumer expose ses métriques sur `http://localhost:9090/metrics` (package `promhttp`, fichier `apps/consumer/main.go`) : `wiki_consumer_events_total`, `wiki_consumer_events_failed_total`, `wiki_consumer_insert_duration_seconds`.
+The consumer container exposes its metrics at `http://localhost:9090/metrics` (`promhttp` package, `apps/consumer/main.go`): `wiki_consumer_events_total`, `wiki_consumer_events_failed_total`, `wiki_consumer_insert_duration_seconds`.
 
-Le Service `consumer` (`k8s/base/consumer/service.yaml`) expose ce port sous le nom `metrics`, sans effet tant que rien ne l'interroge.
+The `consumer` Service (`k8s/base/consumer/service.yaml`) exposes this port under the name `metrics`, with no effect until something actually queries it.
 
-L'objet `ServiceMonitor` (`k8s/base/monitoring/consumer-servicemonitor.yaml`) porte le label `release: prometheus`, requis car le Prometheus de ce cluster n'accepte que les ServiceMonitor portant ce label précis dans son `serviceMonitorSelector`.
+The `ServiceMonitor` object (`k8s/base/monitoring/consumer-servicemonitor.yaml`) carries the label `release: prometheus`, required because the Prometheus instance on this cluster only accepts ServiceMonitors carrying that exact label in its `serviceMonitorSelector`.
 
 ```
-Prometheus Operator (pod à part, namespace monitoring, différent de
-Prometheus lui-même) surveille l'API Kubernetes en permanence
+Prometheus Operator (a separate pod, monitoring namespace, not
+Prometheus itself) watches the Kubernetes API at all times
         │
-        │ voit apparaître le ServiceMonitor "consumer"
-        │ vérifie que son label release: prometheus correspond à ce
-        │ que l'objet Prometheus (CRD) attend
+        │ sees the "consumer" ServiceMonitor appear
+        │ checks that its release: prometheus label matches what
+        │ the Prometheus object (CRD) expects
         ▼
-Prometheus Operator génère la configuration de scrape correspondante,
-l'injecte dans un Secret lu par Prometheus, puis force un rechargement
-à chaud (endpoint /-/reload)
+Prometheus Operator generates the matching scrape config,
+injects it into a Secret read by Prometheus, then forces a
+hot reload (/-/reload endpoint)
         │
         ▼
-Prometheus scrape http://consumer.keda-observation.svc.cluster.local:9090/metrics
-toutes les 15 secondes, et conserve l'historique dans le temps
+Prometheus scrapes http://consumer.keda-observation.svc.cluster.local:9090/metrics
+every 15 seconds, and keeps the history over time
 
-Prometheus scrape également kube-state-metrics, qui expose l'état
-du HPA keda-hpa-consumer-scaler (nombre de réplicas courant et désiré)
+Prometheus also scrapes kube-state-metrics, which exposes the
+state of the keda-hpa-consumer-scaler HPA (current and desired
+replica count)
         │
         ▼
-Grafana interroge Prometheus pour construire les graphiques : débit
-d'événements, latence d'insertion, et nombre de pods consumer dans
-le temps, corrélé au lag Kafka
+Grafana queries Prometheus to build the dashboards: event
+throughput, insert latency, and the number of consumer pods
+over time, correlated with the Kafka lag
 ```
