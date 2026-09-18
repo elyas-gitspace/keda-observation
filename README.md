@@ -12,6 +12,18 @@ Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscal
 
 ---
 
+## Table of contents
+
+- [Overview](#overview)
+- [Repo structure](#repo-structure)
+- [Phase 1: GitOps bootstrap](#phase-1-gitops-bootstrap-done-once)
+- [Phase 2: why base/ and overlays/prod/ are separated](#phase-2-why-base-and-overlaysprod-are-separated)
+- [Phase 3: data flow](#phase-3-data-flow)
+- [Phase 4: how KEDA works here](#phase-4-how-keda-works-here)
+- [Phase 5: observability](#phase-5-observability)
+
+---
+
 ## Overview
 
 ![Architecture diagram](docs/architecture_keda.png)
@@ -61,50 +73,22 @@ argocd/
 
 ## Phase 1: GitOps bootstrap (done once)
 
-This is the only manual action in the whole project. After this, nothing is ever done by hand again.
+This is the only manual action in the whole project:
 
-```
+\`\`\`
 kubectl apply -f https://raw.githubusercontent.com/<user>/keda-observation/main/argocd/application.yaml
-```
+\`\`\`
 
-What happens:
+\`\`\`mermaid
+flowchart TD
+    A["kubectl apply application.yaml<br/>(one-time manual step)"] --> B[ArgoCD clones the repo]
+    B --> C["Kustomize builds k8s/overlays/prod<br/>(base/ + image tags)"]
+    C --> D[ArgoCD applies the result to the cluster]
+    D --> E["Pods are created<br/>(Deployments, StatefulSets)"]
+    E -.->|continuous sync + selfHeal| B
+\`\`\`
 
-```
-Kubernetes creates the "keda-observation" Application object in the argocd namespace
-        │
-        ▼
-argocd-application-controller sees this new object
-        │
-        │ reads spec.source.repoURL and spec.source.path (k8s/overlays/prod)
-        ▼
-argocd-repo-server clones the repo, moves into k8s/overlays/prod
-        │
-        │ finds a kustomization.yaml, runs Kustomize (built into ArgoCD)
-        ▼
-Kustomize reads k8s/overlays/prod/kustomization.yaml
-        │
-        ├── sees "resources: ../../base"
-        │       → reads k8s/base/kustomization.yaml
-        │       → assembles the 13 files listed there
-        │
-        └── sees "images: [...]"
-                → scans the assembled objects
-                → finds the containers whose image matches
-                  ghcr.io/<user>/producer and .../consumer
-                → replaces their tag with newTag (patched by the CI later)
-        │
-        ▼
-Result: one final YAML stream, 13 objects, up-to-date images
-        │
-        ▼
-argocd-application-controller applies this result to the Kubernetes API
-        │
-        ▼
-The native controllers (Deployment, StatefulSet) create the real pods
-on the nodes, following the nodeSelector set in each manifest
-```
-
-After that, continuously: ArgoCD compares the repo state to the real cluster state every few minutes, and automatically fixes any difference (`selfHeal: true`), including if someone edits an object by hand with `kubectl edit`.
+After this, ArgoCD continuously compares the repo to the real cluster state and fixes any drift automatically (`selfHeal: true`).
 
 ---
 
