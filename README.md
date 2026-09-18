@@ -8,7 +8,7 @@
               O B S E R V A T I O N
 ```
 
-Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscaling driven by real load (KEDA), continuous deployment with GitOps (ArgoCD), and observability (Prometheus/Grafana).
+Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscaling driven by real load (KEDA), continuous deployment with GitOps (ArgoCD), and observability (Prometheus/Grafana)
 
 ---
 
