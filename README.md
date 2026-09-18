@@ -75,18 +75,18 @@ argocd/
 
 This is the only manual action in the whole project:
 
-\`\`\`
+```
 kubectl apply -f https://raw.githubusercontent.com/<user>/keda-observation/main/argocd/application.yaml
-\`\`\`
+```
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["kubectl apply application.yaml<br/>(one-time manual step)"] --> B[ArgoCD clones the repo]
     B --> C["Kustomize builds k8s/overlays/prod<br/>(base/ + image tags)"]
     C --> D[ArgoCD applies the result to the cluster]
     D --> E["Pods are created<br/>(Deployments, StatefulSets)"]
     E -.->|continuous sync + selfHeal| B
-\`\`\`
+```
 
 After this, ArgoCD continuously compares the repo to the real cluster state and fixes any drift automatically (`selfHeal: true`).
 
