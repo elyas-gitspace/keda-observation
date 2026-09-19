@@ -160,7 +160,7 @@ KEDA is installed once, cluster-wide, from its official manifest (not written by
 
 The only KEDA-related file that belongs to this repo is `k8s/base/keda/scaledobject.yaml`:
 
-![kind ScaledObject file](docs/k8s_base_keda_scaledobject.yaml.png.png)
+![kind ScaledObject file](docs/k8s_base_keda_scaledobject.yaml.png)
 
 ### What happens once this object exists
 
