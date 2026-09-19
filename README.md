@@ -160,33 +160,7 @@ KEDA is installed once, cluster-wide, from its official manifest (not written by
 
 The only KEDA-related file that belongs to this repo is `k8s/base/keda/scaledobject.yaml`:
 
-```yaml
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: consumer-scaler
-  namespace: keda-observation
-spec:
-  scaleTargetRef:
-    name: consumer          # which Deployment to scale
-
-  minReplicaCount: 1         # never scale down to zero
-  maxReplicaCount: 8          # upper bound
-
-  pollingInterval: 15          # how often KEDA checks the lag, in seconds
-  cooldownPeriod: 60            # wait time before scaling back down
-
-  triggers:
-    - type: kafka
-      metadata:
-        # Full address (FQDN) required: keda-operator runs in the
-        # "keda" namespace, not "keda-observation".
-        bootstrapServers: redpanda.keda-observation.svc.cluster.local:9092
-        consumerGroup: wikipedia-consumer-group   # same group as the consumer code
-        topic: wikipedia-events                    # same topic as producer/consumer
-        lagThreshold: "20"                           # target lag per partition
-        offsetResetPolicy: latest
-```
+![kind ScaledObject file](docs/k8s_base_keda_scaledobject.yaml.png.png)
 
 ### What happens once this object exists
 
