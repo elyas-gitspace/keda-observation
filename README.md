@@ -10,7 +10,6 @@
 
 Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscaling driven by real load (KEDA), continuous deployment with GitOps (ArgoCD), and observability (Prometheus/Grafana)
 
----
 
 ## Table of contents
 
@@ -22,7 +21,6 @@ Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscal
 - [Phase 4: how KEDA works here](#phase-4-how-keda-works-here)
 - [Phase 5: observability](#phase-5-observability)
 
----
 
 ## Overview
 
@@ -30,7 +28,6 @@ Event-driven streaming pipeline (Wikipedia -> Kafka -> PostgreSQL) with autoscal
 
 Everything runs on a kubeadm cluster (3 Hetzner VMs), managed with GitOps through ArgoCD: this repo is the single source of truth, nothing is changed by hand in the cluster.
 
----
 
 ## Repo structure
 
@@ -69,7 +66,6 @@ argocd/
 └── application.yaml      ArgoCD Application object, points to k8s/overlays/prod
 ```
 
----
 
 ## Phase 1: GitOps bootstrap (done once)
 
@@ -90,7 +86,6 @@ flowchart TD
 
 After this, ArgoCD continuously compares the repo to the real cluster state and fixes any drift automatically (`selfHeal: true`).
 
----
 
 ## Phase 2: why base/ and overlays/prod/ are separated
 
@@ -100,7 +95,6 @@ After this, ArgoCD continuously compares the repo to the real cluster state and 
 
 ArgoCD points exactly at `k8s/overlays/prod`, never at `k8s/` as a whole: both folders contain their own `kustomization.yaml`, and without a precise entry point ArgoCD would try to treat both as separate sources, producing two competing definitions of the same objects.
 
----
 
 ## Phase 3: data flow
 
@@ -142,9 +136,12 @@ Persistent disk (storageClassName local-path), mounted on
 /var/lib/postgresql/data — survives pod restarts
 ```
 
----
 
 ## Phase 4: how KEDA works here
+
+### Seeing it in action
+
+![KEDA scaling the consumer pods](docs/keda-scaling.png)
 
 ### The problem KEDA solves
 
@@ -161,12 +158,35 @@ KEDA is installed once, cluster-wide, from its official manifest (not written by
 
 ### Our ScaledObject
 
-`k8s/base/keda/scaledobject.yaml` is the only KEDA-related file that belongs to this repo. It sets:
+The only KEDA-related file that belongs to this repo is `k8s/base/keda/scaledobject.yaml`:
 
-- `scaleTargetRef.name: consumer` — which Deployment to scale
-- `minReplicaCount: 1`, `maxReplicaCount: 8` — the bounds
-- `triggers[0].metadata.bootstrapServers` — the full address (FQDN) of Redpanda, `redpanda.keda-observation.svc.cluster.local:9092`, needed because `keda-operator` runs in the `keda` namespace, not `keda-observation`
-- `lagThreshold: "20"` — the target lag per partition
+```yaml
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: consumer-scaler
+  namespace: keda-observation
+spec:
+  scaleTargetRef:
+    name: consumer          # which Deployment to scale
+
+  minReplicaCount: 1         # never scale down to zero
+  maxReplicaCount: 8          # upper bound
+
+  pollingInterval: 15          # how often KEDA checks the lag, in seconds
+  cooldownPeriod: 60            # wait time before scaling back down
+
+  triggers:
+    - type: kafka
+      metadata:
+        # Full address (FQDN) required: keda-operator runs in the
+        # "keda" namespace, not "keda-observation".
+        bootstrapServers: redpanda.keda-observation.svc.cluster.local:9092
+        consumerGroup: wikipedia-consumer-group   # same group as the consumer code
+        topic: wikipedia-events                    # same topic as producer/consumer
+        lagThreshold: "20"                           # target lag per partition
+        offsetResetPolicy: latest
+```
 
 ### What happens once this object exists
 
@@ -204,12 +224,6 @@ Checking the real lag by hand:
 ```
 kubectl exec -it redpanda-0 -n keda-observation -- rpk group describe wikipedia-consumer-group
 ```
-
-### Seeing it in action
-
-![KEDA scaling the consumer pods](docs/keda-scaling.png)
-
----
 
 ## Phase 5: observability
 
